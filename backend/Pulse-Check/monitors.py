@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 import asyncio
+import time
 from datetime import datetime, timezone
 from models import MonitorCreate
 from store import store
@@ -39,6 +40,8 @@ async def create_monitor(monitor: MonitorCreate):
         raise HTTPException(status_code=500, detail="could not create monitor")
 
     # countdown starts and attach task
+    now = time.monotonic()
+    await store.set_timer_start(monitor.id, now)
     task = asyncio.create_task(countdown(monitor.id, monitor.timeout))
     store.set_task(monitor.id, task)
 
@@ -59,6 +62,8 @@ async def heartbeat(device_id: str):
         await store.update_status(device_id, "active")
 
     # start a fresh timer
+    now = time.monotonic()
+    await store.set_timer_start(device_id, now)
     task = asyncio.create_task(countdown(device_id, mon["timeout"]))
     store.set_task(device_id, task)
 
@@ -76,4 +81,43 @@ async def pause_monitor(device_id: str):
     store.cancel_task(device_id)
     await store.update_status(device_id, "paused")
     return {"message": f"Monitor {device_id} paused"}
+
+@router.get("/{device_id}")
+async def get_monitor(device_id: str):
+    mon = await store.get(device_id)
+    if not mon:
+        raise HTTPException(status_code=404, detail="Monitor not found")
+
+    # calculate remaining seconds when active
+    remaining = None
+    if mon["status"] == "active" and mon.get("timer_start"):
+        elapsed = time.monotonic() - mon["timer_start"]
+        remaining = max(0, mon["timeout"] - int(elapsed))
+
+    return {
+        "id": mon["id"],
+        "timeout": mon["timeout"],
+        "status": mon["status"],
+        "alert_email": mon["alert_email"],
+        "remaining_seconds": remaining
+    }
+
+@router.get("")
+async def list_monitors():
+    """Developer’s Choice: view all monitors."""
+    all_monitors = await store.get_all()
+    result = []
+    for mon in all_monitors:
+        remaining = None
+        if mon["status"] == "active" and mon.get("timer_start"):
+            elapsed = time.monotonic() - mon["timer_start"]
+            remaining = max(0, mon["timeout"] - int(elapsed))
+        result.append({
+            "id": mon["id"],
+            "timeout": mon["timeout"],
+            "status": mon["status"],
+            "alert_email": mon["alert_email"],
+            "remaining_seconds": remaining
+        })
+    return result
     

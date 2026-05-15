@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 from datetime import datetime, timezone
 from typing import Dict, Optional
 
@@ -12,7 +13,14 @@ class MonitorStore:
         self._monitors: Dict[str, dict] = {}
         self._lock = asyncio.Lock()   # prevent race conditions
         self._load_from_file()
-
+    
+    async def set_timer_start(self, monitor_id: str, start_time: float):
+        """Record the start time of the countdown."""
+        async with self._lock:
+            monitor = self._monitors.get(monitor_id)
+            if monitor:
+                monitor["timer_start"] = start_time
+                
     # persistence helpers
     def _load_from_file(self):
         """Load monitors from JSON file if it exists."""
@@ -41,7 +49,7 @@ class MonitorStore:
                     "timeout": mdata["timeout"],
                     "status": mdata["status"],
                     "alert_email": mdata["alert_email"],
-                    # don't save "task"
+                    "time_start": mdata.get("timer_start")
                 }
             try:
                 with open(self.file_path, "w") as f:
@@ -65,6 +73,14 @@ class MonitorStore:
         await self._save_to_file()
         return monitor
 
+    async def get(self, monitor_id: str) -> Optional[dict]:
+        async with self._lock:
+            return self._monitors.get(monitor_id)
+
+    async def get_all(self):
+        async with self._lock:
+            return list(self._monitors.values())
+        
     async def update_status(self, monitor_id: str, new_status: str) -> bool:
         async with self._lock:
             monitor = self._monitors.get(monitor_id)
