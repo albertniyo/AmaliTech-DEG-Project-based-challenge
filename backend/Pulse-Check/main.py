@@ -1,11 +1,11 @@
 from fastapi import FastAPI
-import uvicorn
+import asyncio
+from monitors import router as monitors_router, countdown
+from store import store
 
 app = FastAPI(title="Pulse-Check API")
+app.include_router(monitors_router)
 
 @app.get("/")
 def root():
-    return {"message": "Pulse-Check API is running"}
-
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    return {"message": "Pulse-Check API running"}
