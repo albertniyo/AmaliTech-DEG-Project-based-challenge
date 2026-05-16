@@ -1,13 +1,20 @@
 from fastapi import FastAPI
 import asyncio
 import time
+import uvicorn
+from contextlib import asynccontextmanager
 from monitors import router as monitors_router, countdown
 from store import store
 
-app = FastAPI(title="Pulse-Check API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await resume_monitors()
+    yield
+
+app = FastAPI(title="Pulse-Check API", lifespan=lifespan)
 app.include_router(monitors_router)
 
-@app.on_event("startup")
 async def resume_monitors():
     """Restart countdowns for all monitors that were active before shutdown."""
     all_monitors = await store.get_all()
